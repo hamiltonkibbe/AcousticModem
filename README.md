@@ -1,4 +1,4 @@
 AcousticModem
 =============
 
-Teledyne Benthos ATM-900 series modem interface
+Teledyne Benthos ATM-900 and UDB-9400 series modem interface.
