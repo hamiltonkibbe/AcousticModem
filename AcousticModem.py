@@ -110,8 +110,8 @@ class ATM900(object):
 
         :param command: An AT command. <CR><LF> is appended if needed
         :type command: str.
-        :param value: If a value is passed to the function, it will set the 
-            passed parameter to 'value', e.g. ``_atCommand('@P1Baud',9600)`` 
+        :param value: If a value is passed to the function, it will set the
+            passed parameter to 'value', e.g. ``_atCommand('@P1Baud',9600)``
             sends ``@P1Baud=9600`` to the modem.
         :type value: str, int, float.
         :returns: The lines received from the modem.
@@ -153,14 +153,40 @@ class ATM900(object):
             return False
 
 
-    def _setEnable(self, cmd, enable):
+    def _setEnable(self, command, enable):
         if enable is True:
-            self._atCommand(cmd, 'Ena')
+            self._atCommand(command, 'Ena')
         elif enable is False:
-            self._atCommand(cmd, 'Dis')
+            self._atCommand(command, 'Dis')
         else:
             raise TypeError('Invalid parameter, enable must be a bool')
-            
+
+    def _getEnable(self, command):
+        response = self._atCommand(command)[0]
+        if 'Ena' in response:
+            return True
+        elif 'Dis' in response:
+            return False
+        else:
+            return
+
+    def _setCommand(self, command, value, checkValue=None, exceptString=None):
+        if checkValue is not None:
+            if value not in checkValue:
+                if exceptString is not None:
+                    raise ValueError(exceptString)
+                else:
+                    raise ValueError('Invalid Parameter')
+                return
+            else:
+                self._atCommand(command, value)
+    
+    def _getCommandCode(self, command):
+        response = self._atCommand(command)[0].split(' ')
+        return int(response[0]), response[1].strip(' ()')
+    
+    
+    
     def close(self):
         """ Close the serial port
         """
@@ -169,7 +195,7 @@ class ATM900(object):
 
     def write(self, data):
         """ Transmit data over the acoustic modem.
-        
+
         :raises: ValueError
         """
         if self._config_mode:
@@ -217,14 +243,14 @@ class ATM900(object):
 
     def reboot(self):
         """ Reboot the firmware of the local modem
-        
+
         """
         self._atCommand('ATES')
 
 
     def writeSettings(self):
         """ Write current modem settings to flash
-        
+
         """
         self._atCommand('AT&W')
 
@@ -280,7 +306,7 @@ class ATM900(object):
     def P1Baud(self):
         """ Serial port 1 baud rate
 
-        :param rate: 
+        :param rate:
             Available baud rates are:
                 * 1200
                 * 2400
@@ -299,14 +325,15 @@ class ATM900(object):
 
     @P1Baud.setter
     def P1Baud(self, rate):
-        if rate not in self.available_baud_rates:
-            raise ValueError('Invalid baud rate selected. Valid rates are \
-            1200, 2400, 4800, 9600, 19200, 57600, or 115200')
-        else:
-            self.baud_rate = rate
-            self._atCommand('@P1Baud', rate)
-            self.modem.close()
-            self.modem = ser(self.serial_port, self.baud_rate, timeout=1.0)
+        self._setCommand('@P1Baud',
+                         rate,
+                         self. available_baud_rates,
+                         'Invalid baud rate selected. Valid rates are 1200, \
+                         2400, 4800, 9600, 19200, 57600, or 115200')
+
+        self.baud_rate = rate
+        self.modem.close()
+        self.modem = ser(self.serial_port, self.baud_rate, timeout=1.0)
 
 
     @property
@@ -322,11 +349,7 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@P1EchoChar')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
+        return self._getEnable('@P1EchoChar')
 
 
     @P1EchoChar.setter
@@ -342,52 +365,50 @@ class ATM900(object):
             lists this command as P1FlowCtrl, when the actual command is
             P1FlowCtl.  This method uses ``@P1FlowCtl`` when communicating with
             the modem, but the method name remains ``P1FlowCtrl`` for
-            consistency with the User's Manual 
-                
-        :param setting: 
+            consistency with the User's Manual
+
+        :param setting:
             Options are:
-            
+
                 0  (None):
-                    Selects no handshaking and turns off the RS_232 driver for 
+                    Selects no handshaking and turns off the RS_232 driver for
                     serial port 1 when the modem is in the lowpower state.
                 1  (SW):
                     Selects software XON/XOFF handshaking and turns off the
-                    RS-232 driver for serial port 1 when the modem is in the 
+                    RS-232 driver for serial port 1 when the modem is in the
                     lowpower state.
                 2  (HW):
-                    Selects hardware RTS/CTS handshaking and leaves the RS-232 
-                    driver for serial port 1 turned on when the modem is in the 
-                    lowpower state. However, the modem draws an additional 2mA 
+                    Selects hardware RTS/CTS handshaking and leaves the RS-232
+                    driver for serial port 1 turned on when the modem is in the
+                    lowpower state. However, the modem draws an additional 2mA
                     of current which shortens the modem battery pack life.
                 3  (HW-LP):
-                    Selects hardware RTS/CTS handshaking and turns off the 
-                    RS-232 driver for serial port 1 when the modem is in the 
-                    lowpower state. Therefore when the modem is in the lowpower 
+                    Selects hardware RTS/CTS handshaking and turns off the
+                    RS-232 driver for serial port 1 when the modem is in the
+                    lowpower state. Therefore when the modem is in the lowpower
                     state, there is no handshaking.
-                    
+
         :type setting:  int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@P1FlowCtl')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@P1FlowCtl')
 
 
     @P1FlowCtrl.setter
     def P1FlowCtrl(self, setting):
-        if setting not in range(0,4):
-            raise ValueError('Invalid parameter, valid settings are 0-3')
-        else:
-            self._atCommand('@P1FlowCtl', setting)
-
+        self._setCommand('@P1FlowCtl',
+                         setting,
+                         range(0,4),
+                         'Invalid parameter, valid settings are 0-3')
 
     @property
     def P1Protocol(self):
         """ Serial port 1 protocol.
-        
-        :param protocol: 
+
+        :param protocol:
             Options are:
-            
+
                 0
                     RS-232
                 1
@@ -396,33 +417,25 @@ class ATM900(object):
         :rtype: int, str.
         :raises:        ValueError
         """
-        response =self._atCommand('@P1Protocol')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@P1Protocol')
 
 
     @P1Protocol.setter
     def P1Protocol(self, protocol):
-        if protocol not in range(0,2):
-            raise ValueError('Invalid parameter, valid protocols are 0 or 1')
-        else:
-            self._atCommand('@P1Protocol', protocol)
-
+        self._setCommand('@P1Protocol',
+                         protocol,
+                         range(0,2),
+                         'Invalid parameter, valid protocols are 0 or 1')
 
     @property
     def P1StripB7(self):
         """ Serial port 1 strip bit 7 enable
-        
+
         :type enable: bool.
         :rtype: bool
         :raises: TypeError
         """
-        response = self._atCommand('@P1StripB7')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@P1StripB7')
 
 
     @P1StripB7.setter
@@ -433,7 +446,7 @@ class ATM900(object):
     def P2Baud(self):
         """ Serial port 2 baud rate
 
-        :param rate: 
+        :param rate:
             Available baud rates are:
                 * 1200
                 * 2400
@@ -452,14 +465,14 @@ class ATM900(object):
 
     @P2Baud.setter
     def P2Baud(self, rate):
-        if rate not in self.available_baud_rates:
-            raise ValueError('Invalid baud rate selected. Valid rates are \
-            1200, 2400, 4800, 9600, 19200, 57600, or 115200')
-        else:
-            self.baud_rate = rate
-            self._atCommand('@P2Baud', rate)
-            self.modem.close()
-            self.modem = ser(self.serial_port, self.baud_rate, timeout=1.0)
+        self._setCommand('@P1Baud',
+                         rate,
+                         self. available_baud_rates,
+                         'Invalid baud rate selected. Valid rates are 1200, \
+                         2400, 4800, 9600, 19200, 57600, or 115200')
+        self.baud_rate = rate
+        self.modem.close()
+        self.modem = ser(self.serial_port, self.baud_rate, timeout=1.0)
 
 
     @property
@@ -470,18 +483,12 @@ class ATM900(object):
             This should be set to *False* if you are using this API to read
             modem parameters.  If it is set to *TRUE* you will be unable to
             read parameters from the modem.
-            
+
         :type enable: bool.
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@P2EchoChar')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@P2EchoChar')
 
 
     @P2EchoChar.setter
@@ -499,107 +506,99 @@ class ATM900(object):
             the modem, but the method name remains ``P2FlowCtrl`` for
             consistency with the User's Manual
 
-        :param setting: 
+        :param setting:
             Options are:
-            
+
                 0  (None):
-                    Selects no handshaking and turns off the RS_232 driver for 
+                    Selects no handshaking and turns off the RS_232 driver for
                     serial port 1 when the modem is in the lowpower state.
                 1  (SW):
                     Selects software XON/XOFF handshaking and turns off the
-                    RS-232 driver for serial port 1 when the modem is in the 
+                    RS-232 driver for serial port 1 when the modem is in the
                     lowpower state.
                 2  (HW):
-                    Selects hardware RTS/CTS handshaking and leaves the RS-232 
-                    driver for serial port 1 turned on when the modem is in the 
-                    lowpower state. However, the modem draws an additional 2mA 
+                    Selects hardware RTS/CTS handshaking and leaves the RS-232
+                    driver for serial port 1 turned on when the modem is in the
+                    lowpower state. However, the modem draws an additional 2mA
                     of current which shortens the modem battery pack life.
                 3 (HW-LP):
-                    Selects hardware RTS/CTS handshaking and turns off the 
-                    RS-232 driver for serial port 1 when the modem is in the 
-                    lowpower state. Therefore when the modem is in the lowpower 
+                    Selects hardware RTS/CTS handshaking and turns off the
+                    RS-232 driver for serial port 1 when the modem is in the
+                    lowpower state. Therefore when the modem is in the lowpower
                     state, there is no handshaking.
-                    
+
         :type setting:  int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@P2FlowCtl')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@P2FlowCtl')
 
 
     @P2FlowCtrl.setter
     def P2FlowCtrl(self, setting):
-        if setting not in range(0,4):
-            raise ValueError('Invalid parameter, valid settings are 0-3')
-        else:
-            self._atCommand('@P2FlowCtl', setting)
+        self._setCommand('@P2FlowCtl',
+                         setting,
+                         range(0,4),
+                         'Invalid parameter, valid settings are 0-3')
+
+
 
 
     @property
     def P2StripB7(self):
         """ Serial port 2 strip bit 7 enable
-        
+
         :type enable: bool.
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@P2StripB7')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@P2StripB7')
 
 
     @P2StripB7.setter
     def P2StripB7(self, enable):
         self._setEnable('@P2StripB7', enable)
-        
+
     @property
     def SyncPPS(self):
         """ PPS clock source.
 
-        :param setting: 
+        :param setting:
             Options are:
                 0  (Off):
-                    The date and time are driven from the internal real-time 
-                    clock, and the RX and TX time stamps, which are shown at 
+                    The date and time are driven from the internal real-time
+                    clock, and the RX and TX time stamps, which are shown at
                     verbose level 3, will be at a 1.56 ms time accuracy.
                 1  (Ext0):
-                    The real-time clock is externally driven. Contact Teledyne 
+                    The real-time clock is externally driven. Contact Teledyne
                     Benthos for further information.
                 2  (RTC):
-                    The date and time are driven from the internal real-time 
-                    clock, and the RX and TX time stamps, which are shown at 
-                    verbose level 3, will be at a 0.1 ms time accuracy. With 
-                    this setting the modem is prevented from entering the 
-                    lowpower state, which allows the modem to maintain a high 
+                    The date and time are driven from the internal real-time
+                    clock, and the RX and TX time stamps, which are shown at
+                    verbose level 3, will be at a 0.1 ms time accuracy. With
+                    this setting the modem is prevented from entering the
+                    lowpower state, which allows the modem to maintain a high
                     accuracy on the time stamps.
                 3  (Ext1):
-                    The real-time clock is externally driven. Contact Teledyne 
+                    The real-time clock is externally driven. Contact Teledyne
                     Benthos for further information.
         :type setting:  int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response =  self._atCommand('@SyncPPS')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@SyncPPS')
 
 
     @SyncPPS.setter
     def SyncPPS(self, setting):
-        if setting not in range(0, 4):
-            raise ValueError('Invalid parameter, valid settings are 0-3')
-        else:
-            self._atCommand('@SyncPPS', setting)
-
-
+        self._setCommand('@SyncPPS',
+                         setting,
+                         range(0, 4),
+                         'Invalid parameter, valid settings are 0-3')
     @property
     def IdleTimer(self):
         """ Low Power Idle Timer.
-        
+
         :param time: timer as HH:MM:SS
         :type time: str.
         :rtype: str.
@@ -622,82 +621,78 @@ class ATM900(object):
     def Verbose(self):
         """ Display verbosity.
 
-        :param setting: 
+        :param setting:
             Options are:
-                0 (data):   
+                0 (data):
                     Only data are displayed
                 1 (data/diag):
                     Data and some diagnostic messages are displayed
                 2 (data/diag/rcv):
-                    Data, most diagnostic messages, and received data 
+                    Data, most diagnostic messages, and received data
                     statistics are displayed
                 3 (data/diag/rcv/stat):
-                    Data, additional diagnostic messages, and received data 
+                    Data, additional diagnostic messages, and received data
                     statistics are displayed
                 4 (factory):
                     For factory use only
-                
+
         :type setting:  int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response =  self._atCommand('@Verbose')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@Verbose')
 
 
     @Verbose.setter
     def Verbose(self, setting):
-        if setting not in range(0, 5):
-            raise ValueError('Invalid parameter, valid settings are 0-4')
-        else:
-            self._atCommand('@Verbose', setting)
-
+        self._setCommand('@Verbose',
+                         setting,
+                         range(0, 5),
+                         'Invalid parameter, valid settings are 0-4')
 
     @property
     def Prompt(self):
         """ Prompt setting.
 
-        :param setting: 
+        :param setting:
             Options are:
                 0 ( ):
                     No command prompt
-                1 (>):   
+                1 (>):
                     The ">" character
-                2 (user):  
+                2 (user):
                     Privilege level
-                3 (user>): 
+                3 (user>):
                     Privilege level and ">"
-                4 (:1):   
+                4 (:1):
                     Command history  number
-                5 (:1>):  
+                5 (:1>):
                     Command history number and ">"
-                6 (user:1):  
+                6 (user:1):
                     Privilege level and command history number
-                7 (user:1>):   
+                7 (user:1>):
                     Privilege level, command history number and ">"
         :type setting:  int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response =  self._atCommand('@Prompt')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@Prompt')
 
 
     @Prompt.setter
     def Prompt(self, setting):
-        if value not in range(0, 8):
-            raise ValueError('Invalid parameter, valid values are 0-7')
-        else:
-            self._atCommand('@Prompt', value)
-
+        self._setCommand('@Prompt',
+                         setting,
+                         range(0, 8),
+                         'Invalid parameter, valid values are 0-7')
 
     @property
     def CMWakeHib(self):
         """ Compact modem wakeup period.
 
-        :param period: 
+        :param period:
             Options are::
-            
+
                 -1   Off
                 0    2sec.
                 1    3sec.
@@ -710,38 +705,30 @@ class ATM900(object):
                 8    32sec.
                 9    48sec.
                 11  96sec.
-                
+
         :type period: int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@CMWakeHib')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@CMWakeHib')
 
 
     @CMWakeHib.setter
     def CMWakeHib(self, period):
-        if value not in [range(-1,10),11]:
-            raise ValueError('Invalid parameter, valid values are 0-9 or 11')
-        else:
-            self._atCommand('@CMWakeHib', value)
-
+        self._setCommand('@CMWakeHib',
+                         period,
+                         [range(-1,10),11],
+                         'Invalid parameter, valid values are 0-9 or 11')
 
     @property
     def CMFastWake(self):
         """Fast compact modem wakeup scheme enable/disable.
-        
+
         :type enable: bool.
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@CMFastWake')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@CMFastWake')
 
 
     @CMFastWake.setter
@@ -753,122 +740,110 @@ class ATM900(object):
     def CPBoard(self):
         """ Coprocessor board presence
 
-        :param setting: 
+        :param setting:
             Options are:
                 0  (Off):
                     Disables the coprocessor board.
                 1  (Powersave):
-                    Enables the coprocessor board, but places it in a low power 
-                    state in between receiving data packets. The board will be 
-                    powered up in full when a newdata packet is received and 
-                    put back into its low power state after receiving the 
+                    Enables the coprocessor board, but places it in a low power
+                    state in between receiving data packets. The board will be
+                    powered up in full when a newdata packet is received and
+                    put back into its low power state after receiving the
                     packet.
                 2  (AlwaysOn):
-                    Enables the coprocessor board, keeping it fully powered at 
+                    Enables the coprocessor board, keeping it fully powered at
                     all times.
                 3  (Program):
-                    Enables the coprocessor board but does not establish 
-                    communications with it. This setting is used only for 
+                    Enables the coprocessor board but does not establish
+                    communications with it. This setting is used only for
                     updating the firmware on the board.
         :type setting:  int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response =  self._atCommand('@CPBoard')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@CPBoard')
 
 
     @CPBoard.setter
     def CPBoard(self, setting):
-        if setting not in range(0, 4):
-            raise ValueError('Invalid parameter, valid settings are 0-3')
-        else:
-            self._atCommand('@CPBoard', setting)
+        self._setCommand('@CPBoard',
+                         setting,
+                         range(0, 4),
+                         'Invalid parameter, valid settings are 0-3')
 
 
     @property
     def AcData(self):
         """ Output or store received data
 
-        :param setting: 
+        :param setting:
             Options are:
                 0  (UART):
-                    Data received over the acoustic link are output over the 
+                    Data received over the acoustic link are output over the
                     serial interface.
                 1  (Datalog):
-                    Data received over the acoustic link are stored in the data 
+                    Data received over the acoustic link are stored in the data
                     logger.
                 2  (UART+Datalog):
-                    Data received over the acoustic link are both output over 
+                    Data received over the acoustic link are both output over
                     the serial interface and stored in the data logger.
         :type setting:  int.
         :rtype: int, str.
         :raises:        ValueError
         """
-        response = self._atCommand('@AcData')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@AcData')
 
 
     @AcData.setter
     def AcData(self, setting):
-        if setting not in range(0, 3):
-            raise ValueError('Invalid parameter, valid settings are 0-3')
-        else:
-            self._atCommand('@AcData', setting)
+        self._setCommand('@AcData',
+                         setting,
+                         range(0, 3),
+                         'Invalid parameter, valid settings are  0-3')
 
 
     @property
     def AcStats(self):
         """ Store received data and time stamps.
 
-        :param setting: 
+        :param setting:
             Options are:
                 0  (Off):
-                    Statistics and time stamps for data received over the 
+                    Statistics and time stamps for data received over the
                     acoustic link are not stored in the data logger memory.
                 1  (Stats):
-                    Statistics for data received over the acoustic link are 
+                    Statistics for data received over the acoustic link are
                     stored in the data logger memory.
                 4  (TimeStamp):
-                    Time stamps for data received over the acoustic ink are 
+                    Time stamps for data received over the acoustic ink are
                     stored in the data logger memory.
-                5  (Stats+Time): 
-                    Statistics and time stamps for data received over the 
+                5  (Stats+Time):
+                    Statistics and time stamps for data received over the
                     acoustic link are stored in the data logger memory.
-                    
+
         :type setting:  int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@AcStats')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@AcStats')
 
 
     @AcStats.setter
     def AcStats(self, setting):
-        if setting not in [0, 1, 4, 5]:
-            raise ValueError('Invalid parameter, valid settings are 0, 1, 4 \
-            or 5')
-        else:
-            self._atCommand('@AcStats', setting)
-
+        self._setCommand('@AcStats',
+                         setting,
+                         [0, 1, 4, 5],
+                         'Invalid parameter, valid settings are 0, 1, 4 or 5')
 
     @property
     def RingBuf(self):
         """ Ring buffer enable/disable.
-        
+
         :type enable:   bool.
         :rtype: bool.
         :raises: TypeError.
         """
-        response = self._atCommand('@RingBuf')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
-
+        return self._getEnable('@RingBuf')
 
     @RingBuf.setter
     def RingBuf(self, enable):
@@ -887,49 +862,48 @@ class ATM900(object):
 
     @SubBlks.setter
     def SubBlks(self, count):
-        if count not in range(1, 16):
-            raise ValueError('Invalid parameter, valid counts are 0-16')
-        else:
-            self._atCommand('@SubBlks', count)
+        self._setCommand('@SubBlks',
+                         count,
+                         range(1, 16),
+                         'Invalid parameter, valid counts are 0-16')
 
 
     @property
     def LogMode(self):
         """ Data storage mode.
 
-        :param mode: 
+        :param mode:
             Options are:
                 0  (FwdDelay):
-                    Once characters are received on the serial interface, if no 
-                    more characters are received for the amount of time 
-                    configured by the FwdDelay configuration parameter, a 
-                    discrete record is created and the characters are stored in 
+                    Once characters are received on the serial interface, if no
+                    more characters are received for the amount of time
+                    configured by the FwdDelay configuration parameter, a
+                    discrete record is created and the characters are stored in
                     the data logger memory.
                 1  (Sentinel):
-                    When the ASCII code of a character received on the serial 
-                    interface matches the setting of the Sentinel configuration 
-                    parameter, a discrete record is created and subsequently 
+                    When the ASCII code of a character received on the serial
+                    interface matches the setting of the Sentinel configuration
+                    parameter, a discrete record is created and subsequently
                     received characters are stored in the data logger memory.
                 2  (ChrCount):
-                    When the number of characters received on the serial 
-                    interface matches the number configured by the setting of 
-                    the ChrCount configuration parameter, a discrete record is 
-                    created and the characters are stored in the data logger 
+                    When the number of characters received on the serial
+                    interface matches the number configured by the setting of
+                    the ChrCount configuration parameter, a discrete record is
+                    created and the characters are stored in the data logger
                     memory.
         :type mode: int
         :rtype: int, str.
         :raises:    ValueError
         """
-        response = self._atCommand('@LogMode')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@LogMode')
 
 
     @LogMode.setter
     def LogMode(self, mode):
-        if mode not in range(0, 3):
-            raise ValueError('Invalid parameter, valid modes are 0-2')
-        else:
-            self._atCommand('@LogMode', mode)
+        self._setCommand('@LogMode',
+                         mode,
+                         range(0, 3),
+                         'Invalid parameter, valid modes are 0-2')
 
 
     @property
@@ -944,10 +918,10 @@ class ATM900(object):
 
     @Sentinel.setter
     def Sentinel(self, value):
-        if value not in range(0, 256):
-            raise ValueError('Invalid parameter, valid values are 0-255')
-        else:
-            self._atCommand('@Sentinel', value)
+        self._setCommand('@Sentinel',
+                        value,
+                        range(0, 256),
+                        'Invalid parameter, valid values are 0-255')
 
 
     @property
@@ -963,37 +937,36 @@ class ATM900(object):
 
     @ChrCount.setter
     def ChrCount(self, count):
-        if count not in range(0, 4097):
-            raise ValueError('Invalid parameter, valid counts are 0-4096')
-        else:
-            self._atCommand('@ChrCount', count)
+        self._setCommand('@ChrCount',
+                         count,
+                         range(0, 4097),
+                         'Invalid parameter, valid counts are 0-4096')
 
 
     @property
     def LogStore(self):
         """ Data logger storage medium.
 
-        :param medium: 
+        :param medium:
             Options are:
-                0  (Local):  
+                0  (Local):
                     Data are stored in the data logger memory of the modem.
                 1  (SDHC):
-                    Data are stored in a secure digital high capacity(SDHC) 
+                    Data are stored in a secure digital high capacity(SDHC)
                     card. Currently not supported.
         :type medium:   int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@LogStore')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@LogStore')
 
 
     @LogStore.setter
     def LogStore(self, medium):
-        if medium not in range(0, 2):
-            raise ValueError('Invalid parameter, valid media are 0 or 1')
-        else:
-            self._atCommand('@LogStore', medium)
+        self._setCommand('@LogStore',
+                         medium,
+                         range(0, 2),
+                         'Invalid parameter, valid media are 0 or 1')
 
 
     @property
@@ -1004,19 +977,13 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@DataRetry')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@DataRetry')
 
 
     @DataRetry.setter
     def DataRetry(self, enable):
         self._setEnable('@DataRetry', enable)
-    
+
     @property
     def AcRspTmOut(self):
         """ Acoustic response time out in seconds.
@@ -1030,22 +997,22 @@ class ATM900(object):
 
     @AcRspTmOut.setter
     def AcRspTmOut(self, value):
-        if value not in [x * 0.5 for x in range(4, 200)]:
-            raise ValueError('Invalid parameter, valid timeouts are 2-99.5 in \
-            0.5 second intervals')
-        else:
-            self._atCommand('@AcRspTmOut', value)
+        self._setCommand('@AcRspTmOut',
+                         value,
+                         [x * 0.5 for x in range(4, 200)],
+                         'Invalid parameter, valid timeouts are 2-99.5 in 0.5 \
+                         second intervals')
 
 
     @property
     def OpMode(self):
         """ Modem operating Mode.
 
-        :param mode: 
+        :param mode:
             Options are:
                 0 (Command):
                     Command mode
-                1 (Online): 
+                1 (Online):
                     Online mode
                 2 (Datalog):
                     Datalog mode
@@ -1053,48 +1020,46 @@ class ATM900(object):
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@OpMode')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@OpMode')
 
 
     @OpMode.setter
     def OpMode(self, mode):
-        if mode not in range(0, 3):
-            raise ValueError('Invalid parameter, valid modes are 0-2')
-        else:
-            self._atCommand('@Opmode', mode)
+        self._setCommand('@OpMode',
+                         mode,
+                         range(0, 3),
+                         'Invalid parameter, valid modes are 0-2')
 
 
     @property
     def DevEnable(self):
         """ Device Enable Performance.
 
-        :param mode: 
+        :param mode:
             Options are:
                 0  (Auto):
-                    The device enable output is set automatically for character 
-                    output and chan also be set with the local device enable 
+                    The device enable output is set automatically for character
+                    output and chan also be set with the local device enable
                     (ATTDm) and Remote Device Enable(AT$Xn,m) commands.
                 1  (MBARI):
                     Reserved and should not be used
                 2  (Manual):
-                    The device enable output is set only with the local device 
-                    enable(ATTDm) and remote device enable (AT$Xn,m) commands. 
+                    The device enable output is set only with the local device
+                    enable(ATTDm) and remote device enable (AT$Xn,m) commands.
                     It will not be set automatically.
         :type mode: int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@DevEnable')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@DevEnable')
 
 
     @DevEnable.setter
     def DevEnable(self, mode):
-        if mode not in range(0, 3):
-            raise ValueError('Invalid parameter, valid modes are 0-2')
-        else:
-            self._atCommand('@DevEnable', mode)
+        self._setCommand('@DevEnable',
+                         mode,
+                         range(0, 3),
+                         'Invalid parameter, valid modes are 0-2')
 
 
     @property
@@ -1110,11 +1075,11 @@ class ATM900(object):
 
     @FwdDelay.setter
     def FwdDelay(self, delay):
-        if delay not in [x * 0.05 for x in range(0, 101)]:
-            raise ValueError('Invalid parameter, valid delays are 0.05-5s in \
-            50ms increments')
-        else:
-            self._atCommand('@FwdDelay', delay)
+        self._setCommand('@FwdDelay',
+                         delay,
+                         [x * 0.05 for x in range(0, 101)],
+                         'Invalid parameter, valid delays are 0.05-5s in 50ms \
+                         increments')
 
 
     @property
@@ -1130,10 +1095,10 @@ class ATM900(object):
 
     @LocalAddr.setter
     def localAddr(self, addr):
-        if addr not in range(0, 250):
-            raise ValueError('Invalid parameter, valid addresses are 0-249')
-        else:
-            self._atCommand('@LocalAddr', addr)
+        self._setCommand('@LocalAddr',
+                         addr,
+                         range(0, 250),
+                         'Invalid parameter, valid addresses are 0-249')
 
 
     @property
@@ -1149,11 +1114,10 @@ class ATM900(object):
 
     @RemoteAddr.setter
     def RemoteAddr(self, addr):
-        if addr not in [range(0, 250), 255]:
-            raise ValueError('Invalid parameter, valid addresses are 0-249 or \
-            255')
-        else:
-            self._atCommand('@RemoteAddr', addr)
+        self._setCommand('@RemoteAddr',
+                         addr,
+                         [range(0, 250), 255],
+                         'Invalid parameter, valid addresses are 0-249 or 255')
 
 
     @property
@@ -1164,19 +1128,13 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@ShowBadData')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@ShowBadData')
 
 
     @ShowBadData.setter
     def ShowBadData(self, enable):
         self._setEnable('@ShowBadData', enable)
-    
+
     @property
     def StartTones(self):
         """ Play start tones enable/disable.
@@ -1185,13 +1143,7 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@StartTones')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@StartTones')
 
 
     @StartTones.setter
@@ -1202,22 +1154,22 @@ class ATM900(object):
     def TxRate(self):
         """ Transmitting acoustic bit rate.
 
-        :param rate: 
+        :param rate:
             Options are:
-                2  (140): 
-                    140 bits/sec MFSK repeated twice with rate 1/2 
+                2  (140):
+                    140 bits/sec MFSK repeated twice with rate 1/2
                     convolutional coding and 25ms multipath guard period
                 3  (300):
-                    300 bits/sec MFSK repeated twice with rate 1/2 
+                    300 bits/sec MFSK repeated twice with rate 1/2
                     convolutional coding and 25ms multipath guard period
                 4  (600):
-                    600 bits/sec MFSK, with rate 1/2 convolutional coding and 
+                    600 bits/sec MFSK, with rate 1/2 convolutional coding and
                     25ms multipath guard period
                 5  (800):
-                    800 bits/sec MFSK, with rate 1/2 convolutional coding and 
+                    800 bits/sec MFSK, with rate 1/2 convolutional coding and
                     12.5ms multipath guard period
                 6  (1066):
-                    1,066 bits/sec MFSK, with rate 1/2 convolutional coding and 
+                    1,066 bits/sec MFSK, with rate 1/2 convolutional coding and
                     3.125ms multipath guard period
                 7  (1200):
                     1,200 bits/sec MFSK, with rate 1/2 convolutional coding
@@ -1233,30 +1185,29 @@ class ATM900(object):
                     10,240 bits/sec PSK
                 13  (15360):
                     15,360 bits/sec PSK
-                    
+
         :type rate: int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@TxRate')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@TxRate')
 
 
     @TxRate.setter
     def TxRate(self, rate):
-        if rate not in range(2, 14):
-            raise ValueError('Invalid parameter, valid rates are 2-13')
-        else:
-            self._atCommand('@TxRate', rate)
+        self._setCommand('@TxRate',
+                         rate,
+                         range(2, 14),
+                         'Invalid parameter, valid rates are 2-13')
 
 
     @property
     def TxPower(self):
         """ Transmit power level.
-        
-        :param level: 
+
+        :param level:
             Options are:
-                1  
+                1
                     -21 dB
                 2
                     -18 dB
@@ -1266,28 +1217,26 @@ class ATM900(object):
                     -12 dB
                 5
                     -9 dB
-                6 
+                6
                     -6 dB
                 7
                     3 dB
                 8
                     0 dB
-                
+
         :type level:    int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@TxPower')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@TxPower')
 
 
     @TxPower.setter
     def TxPower(self, level):
-        if level not in range(1, 9):
-            raise ValueError('Invalid parameter, valid levels are 1-8')
-        else:
-            self._atCommand('@TxPower', level)
-
+        self._setCommand('@TxPower',
+                         level,
+                         range(1, 9),
+                         'Invalid parameter, valid levels are 1-8')
 
     @property
     def WakeTones(self):
@@ -1297,13 +1246,7 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@WakeTones')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@WakeTones')
 
 
     @WakeTones.setter
@@ -1318,18 +1261,12 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@PrintHex')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@PrintHex')
 
     @PrintHex.setter
     def PrintHex(self, enable):
         self._setEnable('@PrintHex', enable)
-        
+
     @property
     def StrictAT(self):
         """ AT commands enable/disable.
@@ -1338,51 +1275,44 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@StrictAT')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@StrictAT')
 
 
     @StrictAT.setter
     def StrictAT(self, enable):
         self._setEnable('@StrictAT', enable)
-        
+
     @property
     def InputMode(self):
         """ Single/Dual serial port selection.
 
-        :param mode: 
+        :param mode:
             Options are:
                 1 (Single):
-                    The modem will allow only one instrument to be connected to 
-                    the modem for the in put of data when the modem is in 
-                    Online or Datalogger mode. The instrument must be connected 
-                    to serial port 1. Transport information will be transmitted 
+                    The modem will allow only one instrument to be connected to
+                    the modem for the in put of data when the modem is in
+                    Online or Datalogger mode. The instrument must be connected
+                    to serial port 1. Transport information will be transmitted
                     with the data packets only if @TPortMode=Always.
                 2 (Dual):
-                    Two instruments can be connected to the modem, one to 
-                    serial port 1 and the other to serial port 2. Both serial 
-                    ports will input data when the modem is in Online or 
-                    Datalogger mode. Transport information will be transmitted 
+                    Two instruments can be connected to the modem, one to
+                    serial port 1 and the other to serial port 2. Both serial
+                    ports will input data when the modem is in Online or
+                    Datalogger mode. Transport information will be transmitted
                     with the data packets.
         :type mode: int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@InputMode')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@InputMode')
 
 
     @InputMode.setter
     def InputMode(self, mode):
-        if mode not in range(1, 3):
-            raise ValueError('Invalid parameter, valid modes are 0 or 1')
-        else:
-            self._atCommand('@InputMode', mode)
+        self._setCommand('@InputMode',
+                         mode,
+                         range(1, 3),
+                         'Invalid parameter, valid modes are 0 or 1')
 
 
     @property
@@ -1398,10 +1328,10 @@ class ATM900(object):
 
     @TimedRelease.setter
     def TimedRelease(self, value):
-        if value not in range(0, 1000):
-            raise ValueError('Invalid parameter, valid values are 0-999')
-        else:
-            self._atCommand('@TimedRelease', value)
+        self._setCommand('@TimedRelease',
+                         value,
+                         range(0, 1000),
+                         'Invalid parameter, valid values are 0-999')
 
 
     @property
@@ -1411,33 +1341,31 @@ class ATM900(object):
         :param mode:
             Options are:
                 0 (InpMode):
-                    Transport addressing is in accordance with the setting of 
+                    Transport addressing is in accordance with the setting of
                     the InputMode configuration parameter.
                 1 (AlwaysOn):
-                    Transport addressing is always enabled regardless of the 
+                    Transport addressing is always enabled regardless of the
                     setting of the InputMode configuration parameter.
         :type mode: int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@TPortMode')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@TPortMode')
 
 
     @TPortMode.setter
     def TPortMode(self, mode):
-        if mode not in range(0, 2):
-            raise ValueError('Invalid parameter, valid modes are 0 or 1')
-        else:
-            self._atCommand('@TPortMode', mode)
-
+        self._setCommand('@TPortMode',
+                         mode,
+                         range(0, 2),
+                         'Invalid parameter, valid modes are 0 or 1')
 
     @property
     def SrcP1(self):
         """ Transport address that will be attached to transmitted data that
         are input to serial port 1.
 
-        :param addr: 
+        :param addr:
             Options are:
                 1 (1):
                     The transport address for data input on serial port 1 is 1.
@@ -1456,10 +1384,10 @@ class ATM900(object):
 
     @SrcP1.setter
     def SrcP1(self, addr):
-        if addr not in range(1,5):
-            raise ValueError('Invalid parameter, valid addresses are 1-4')
-        else:
-            self._atCommand('@SrcP1', addr)
+        self._setCommand('@SrcP1',
+                         addr,
+                         range(1, 5),
+                         'Invalid parameter, valid addresses are 1-4')
 
 
     @property
@@ -1467,7 +1395,7 @@ class ATM900(object):
         """ Transport address that will be attached to transmitted data that
         are input to serial port 2.
 
-        :param addr: 
+        :param addr:
             Options are:
                 1 (1):
                     The transport address for data input on serial port 2 is 1.
@@ -1486,11 +1414,10 @@ class ATM900(object):
 
     @SrcP2.setter
     def SrcP2(self):
-        if value not in range(1,5):
-            raise ValueError('Invalid parameter, valid addresses are 1-4.')
-        else:
-            self._atCommand('@SrcP2', value)
-
+        self._setCommand('@SrcP2',
+                         addr,
+                         range(1, 5),
+                         'Invalid parameter, valid addresses are 1-4')
 
     @property
     def Dst1(self):
@@ -1500,25 +1427,24 @@ class ATM900(object):
         :param port:
             Options are:
                 1 (P1):
-                    Data received over the acoustic link with transport address 
+                    Data received over the acoustic link with transport address
                     1 will be output on serial port 1.
-                2 (P2): 
-                    Data received over the acoustic link with transport address 
+                2 (P2):
+                    Data received over the acoustic link with transport address
                     1 will be output on serial port 2.
         :type port: int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@Dst1')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@Dst1')
 
 
     @Dst1.setter
     def Dst1(self, port):
-        if port not in range(1, 3):
-            raise ValueError('Invalid parameter, valid ports are 1 or 2.')
-        else:
-            self._atCommand('@Dst1', port)
+        self._setCommand('@Dst1',
+                         port,
+                         range(1, 3),
+                        'Invalid parameter, valid ports are 1 or 2')
 
 
     @property
@@ -1529,25 +1455,24 @@ class ATM900(object):
         :param port:
             Options are:
                 1 (P1):
-                    Data received over the acoustic link with transport address 
+                    Data received over the acoustic link with transport address
                     2 will be output on serial port 1.
-                2 (P2): 
-                    Data received over the acoustic link with transport address 
+                2 (P2):
+                    Data received over the acoustic link with transport address
                     2 will be output on serial port 2.
         :type port: int.
         :rtype: int, str.
         :raises: ValueError
         """
-        response = self._atCommand('@Dst2')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@Dst2')
 
 
     @Dst2.setter
     def Dst2(self, port):
-        if port not in range(1, 3):
-            raise ValueError('Invalid parameter, valid ports are 1 or 2.')
-        else:
-            self._atCommand('@Dst2', port)
+        self._setCommand('@Dst2',
+                         port,
+                         range(1, 3),
+                         'Invalid parameter, valid ports are 1 or 2')
 
 
     @property
@@ -1583,11 +1508,10 @@ class ATM900(object):
 
     @SimAcDly.setter
     def SimAcDly(self, delay):
-        if delay not in range(0,30001):
-            raise ValueError('Invalid parameter, valid delays are 0-30000 ms')
-        else:
-            self._atCommand('@SimAcDelay', delay)
-
+        self._setCommand('@SimAcDly',
+                         delay,
+                         range(0, 30001),
+                         'Invalid parameter, valid delays are 0-30000 ms')
 
     @property
     def PktEcho(self):
@@ -1597,30 +1521,19 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@PktEcho')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@PktEcho')
 
 
     @PktEcho.setter
     def PktEcho(self, enable):
-        if enable is True:
-            self._atCommand('@PktEcho', 'Ena')
-        elif enable is False:
-            self._atCommand('@PktEcho', 'Dis')
-        else:
-            raise TypeError('Invalid parameter, enable must be a bool')
+        self._setEnable('@PktEcho', enable)
 
 
     @property
     def PktSize(self):
         """ Test message size
 
-        :param size: 
+        :param size:
             Options are:
                 0 (8B):
                     8-byte message
@@ -1642,16 +1555,15 @@ class ATM900(object):
         :rtype: int, str
         :raises: ValueError
         """
-        response = self._atCommand('@PktSize')[0].split('')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@PktSize')
 
 
     @PktSize.setter
     def PktSize(self, size):
-        if size not in range(0,8):
-            raise ValueError('Invalid parameter, valid sizes are 0-7')
-        else:
-            self._atCommand('@PktSize', size)
+        self._setCommand('@PktSize',
+                         size,
+                         range(0, 8),
+                        'Invalid parameter, valid sizes are 0-7')
 
 
     @property
@@ -1662,13 +1574,7 @@ class ATM900(object):
         :rtype: bool.
         :raises: TypeError
         """
-        response = self._atCommand('@RcvAll')[0]
-        if 'Ena' in response:
-            return True
-        elif 'Dis' in response:
-            return False
-        else:
-            return
+        return self._getEnable('@RcvAll')
 
 
     @RcvAll.setter
@@ -1688,12 +1594,11 @@ class ATM900(object):
 
     @RxFreq.setter
     def RxFreq(self, freq):
-        if freq not in [x*250 for x in range(28, 65)]:
-            raise ValueError('Invalid parameter, valid frequencies are \
-            7000-16000 in increments of 250')
-        else:
-            self._atCommand('@RxFreq', freq)
-
+        self._setCommand('@RxFreq',
+                         freq,
+                         [x*250 for x in range(28, 65)],
+                         'Invalid parameter, valid frequencies are 7000-16000 \
+                         in increments of 250')
 
     @property
     def RxThresh(self):
@@ -1708,59 +1613,57 @@ class ATM900(object):
 
     @RxThresh.setter
     def RxThresh(self, threshold):
-        if threshold not in range(10,257):
-            raise ValueError('Invalid parameter, valid thresholds are 10-256')
-        else:
-            self._atCommand('@RxThresh', threshold)
+        self._setCommand('@RxThresh',
+                         threshold,
+                         range(10, 257),
+                         'Invalid parameter, valid thresholds are 10-256')
 
 
     @property
     def RxToneDur(self):
         """ Modem receive pulse width
 
-        :param duration: 
+        :param duration:
             Options are:
-                0 (12.5ms): 
+                0 (12.5ms):
                     12.5ms
-                1 (6.25ms): 
+                1 (6.25ms):
                     6.25ms
-                5 (5ms):    
+                5 (5ms):
                     5ms
-                6 (6ms):    
+                6 (6ms):
                     6ms
-                7 (7ms):    
+                7 (7ms):
                     7ms
-                8 (8ms):    
+                8 (8ms):
                     8ms
-                9 (9ms):    
+                9 (9ms):
                     9ms
-                10 (10ms):  
+                10 (10ms):
                     10ms
-                11 (11ms):  
+                11 (11ms):
                     11ms
-                12 (12ms):  
+                12 (12ms):
                     12ms
-                13 (13ms):  
+                13 (13ms):
                     13ms
-                14 (14ms):  
+                14 (14ms):
                     14ms
-                15 (15ms):  
+                15 (15ms):
                     15ms
         :type duration: int.
         :rtype: int, str.
         :raises:        ValueError
         """
-        response = self._atCommand('@RxToneDur')[0].split(' ')
-        return int(response[0]), response[1].strip(' ()')
+        return self._getCommandCode('@RxToneDur')
 
 
     @RxToneDur.setter
     def RxToneDur(self, duration):
-        if duration not in [0,1,range(5,16)]:
-            raise ValueError('Invalid parameter, valid durations are 0, 1, \
-            5-15')
-        else:
-            self._atCommand('@RxToneDur', duration)
+        self._setCommand('@RxToneDur',
+                         duration,
+                         [0,1,range(5,16)],
+                         'Invalid parameter, valid durations are 0, 1, 5-15')
 
 
     @property
@@ -1775,50 +1678,46 @@ class ATM900(object):
 
     @RxLockout.setter
     def RxLockout(self, time):
-        if time not in range(0,1001):
-            raise ValueError('Invalid parameter, valid times are 0-1000ms')
-        else:
-            self._atCommand('@RxLockout', time)
-
+        self._setCommand('@RxLockout',
+                         time,
+                         range(0, 1001),
+                         'Invalid parameter, valid times are 0-1000ms')
 
     @property
     def TxToneDur(self):
-        """ Modem transmit pulse width in milliseconds
+        """ Modem transmit pulse width in tenths of milliseconds
 
-        :type duration: float.
-        :rtype: float.
+        :type duration: int.
+        :rtype: int.
         :raises: ValueError
         """
-        return float(0.1 * int(self._atCommand('@TxToneDur')))
+        return int(self._atCommand('@TxToneDur'))
 
 
     @TxToneDur.setter
     def TxToneDur(self, duration):
-        if duration not in [x*0.1 for x in range(100,251)]:
-            raise ValueError('Invalid parameter, valid durations are 10.0 to \
-            25.0ms in 0.1ms increments')
-        else:
-            self._atCommand('@TxToneDur', int(10 * duration))
+        self._setCommand('@TxToneDur',
+                         duration,
+                         range(100,251),
+                         'Invalid parameter, valid durations are 100 to 250')
 
 
     @property
     def TAT(self):
-        """ Transponder turn-around time
+        """ Transponder turn-around time in tenths of milliseconds
 
-        :type time: float.
-        :rtype: float.
+        :type time: int
+        :rtype: int.
         :raises: ValueError
         """
-        return float(0.1 * int(self._atCommand('@TAT')))
+        return int(self._atCommand('@TAT'))
 
 
     @TAT.setter
     def TAT(self, time):
-        if time not in [x*0.1 for x in range(0,1001)]:
-            raise ValueError('Invalid parameter, valid times are 0 to 100.0ms \
-            in 0.1ms increments')
-        else:
-            self._atCommand('@TAT', int(10 * time))
-
-
+        self._setCommand('@TAT',
+                         time,
+                         range(0, 1001),
+                         'Invalid parameter, valid times are 0 to \
+                         1000')
 

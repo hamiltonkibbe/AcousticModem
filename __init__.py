@@ -7,6 +7,6 @@
 
 from AcousticModem import ATM900
 
-__version__ = 0.1
+__version__ = 1.0
 __author__ = 'Hamilton Kibbe'
 __doc__ = ATM900.__doc__
