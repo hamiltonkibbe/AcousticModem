@@ -180,13 +180,13 @@ class ATM900(object):
                 return
             else:
                 self._atCommand(command, value)
-    
+
     def _getCommandCode(self, command):
         response = self._atCommand(command)[0].split(' ')
         return int(response[0]), response[1].strip(' ()')
-    
-    
-    
+
+
+
     def close(self):
         """ Close the serial port
         """
@@ -240,17 +240,231 @@ class ATM900(object):
                 return
         return self.modem.readline()
 
+    def attention(self):
+        """ Attention
+
+        Resets the local modem idle time timer and verifies communications
+        between the host processor and the modem.
+        """
+        self._atCommand('AT')
+
 
     def reboot(self):
-        """ Reboot the firmware of the local modem
+        """ Reboot
+
+        Reboot the firmware of the local modem
 
         """
         self._atCommand('ATES')
 
 
-    def writeSettings(self):
-        """ Write current modem settings to flash
+    def remoteReset(self, address):
+        """ Remote acoustic reset
 
+        Reset the remote modem at address 'address.'
+
+        :param address: the address of the remote modem to reset.
+        :type address: int.
+        :raises: ValueError.
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        self._atCommand('AT$ES'+ str(address))
+
+
+    def updateFirmware(self):
+        """ Update Firmware
+
+        Initiate the local modem firmware update procedure.
+        """
+        self._atCommand('ATEU')
+
+
+    def dial(self, address):
+        """ Dial
+
+        Cause the local modem to go into Online mode and to go online with the
+        remote modem at address 'address.'
+
+        :param address: The address of the remote modem to dial.
+        :type address: int.
+        :raises: ValueError
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        self._atCommand('ATD' + str(address))
+
+
+    def factoryReset(self):
+        """ Factory reset
+
+        Reset the local modem's configuration parameter settings to their
+        factory default settings.
+        """
+        self._atCommand('AT&F')
+
+
+    def hangUp(self):
+        """ Hang up
+
+        Cause all remote modems to go into the lowpower state
+        """
+        self._atCommand('ATH')
+
+    def remoteBreak(self, address, port):
+        """ Remote break
+
+        Cause the remote modem at address 'address' to send a break on serial
+        port 'port' and to go online with the local modem.
+
+        :param address: The address of the remote modem.
+        :type address:  int.
+        :param port: The serial port of the remote modem on which to send a
+            break
+        :type port: int.
+        :raises: ValueError.
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        if port not in range(1, 3):
+            raise ValueError('Invalid port. Valid ports are 1 or 2.')
+            return
+        self._atCommand('AT$K%s,%s' % str(address), str(port))
+
+    def linkTest(self, address):
+        """ Acoustic link test
+
+        Tests the acoustic link with the modem at address 'address.'
+
+        :param address: The address of the remote modem.
+        :type address: int.
+        :raises: ValueError.
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        self._atCommand('ATX' + str(address))
+
+
+    def rateTest(self, address):
+        """ Multiple bit rate test
+
+        Tests the acoustic link with the modem at address 'address' at multiple
+        bit rates.
+
+        :param address: The address of the remote modem.
+        :type address: int.
+        :raises: ValueError.
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        self._atCommand('ATY' + str(address))
+
+
+    def remotePower(self, address, level):
+        """ Remote power
+
+        Sets the transmit power level of the remote modem at address 'address'
+        to 'level'
+        
+        :param address: The address of the remote modem.
+        :type address: int.
+        :param level: 
+            Options are:
+                1 (Min.)
+                    -21 dB
+                2
+                    -18 dB
+                3
+                    -15 dB
+                4
+                    -12 dB
+                5
+                    -9 dB
+                6
+                    -6 dB
+                7
+                    3 dB
+                8 (Max.)
+                    0 dB
+        :type level: int.
+        :raises: ValueError.
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        if level not in range(1, 9):
+            raise ValueError('Invalid level. Valid power levels are 0 to 8.')
+            return
+        self._atCommand('AT$P%s,%s' % str(address), str(level))
+
+
+    def remoteRate(self, address, rate):
+        """ Remote bit rate
+
+        Sets the transmitting acoustic bit rate of the remote modem at address 
+        'address' to 'rate.'
+
+        :param address: The address of the remote modem.
+        :type address: int.
+        :param rate: 
+            Options are:
+                2  (140):
+                    140 bits/sec MFSK repeated twice with rate 1/2
+                    convolutional coding and 25ms multipath guard period
+                3  (300):
+                    300 bits/sec MFSK repeated twice with rate 1/2
+                    convolutional coding and 25ms multipath guard period
+                4  (600):
+                    600 bits/sec MFSK, with rate 1/2 convolutional coding and
+                    25ms multipath guard period
+                5  (800):
+                    800 bits/sec MFSK, with rate 1/2 convolutional coding and
+                    12.5ms multipath guard period
+                6  (1066):
+                    1,066 bits/sec MFSK, with rate 1/2 convolutional coding and
+                    3.125ms multipath guard period
+                7  (1200):
+                    1,200 bits/sec MFSK, with rate 1/2 convolutional coding
+                8  (2400):
+                    2,400 bits/sec MFSK
+                9  (2560):
+                    2,560 bits/sec PSK, with rate 1/2 convolutional coding
+                10  (5120):
+                    5,120 bits/sec PSK, with rate 1/2 convolutional coding
+                11  (7680):
+                    7,680 bits/sec PSK, with rate 1/2 convolutional coding
+                12  (10240):
+                    10,240 bits/sec PSK
+                13  (15360):
+                    15,360 bits/sec PSK
+        :type rate: int.
+        :raises: ValueError.
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        if rate not in range(2, 14):
+            raise ValueError('Invalid rate. Valid rate settings are 2 to 13.')
+            return
+        self._atCommand('AT$A%s,%s' % str(address), str(rate))
+
+
+    def writeSettings(self):
+        """ Write
+
+        Write current modem settings to flash.
         """
         self._atCommand('AT&W')
 
@@ -1207,7 +1421,7 @@ class ATM900(object):
 
         :param level:
             Options are:
-                1
+                1 (Min.)
                     -21 dB
                 2
                     -18 dB
@@ -1221,10 +1435,10 @@ class ATM900(object):
                     -6 dB
                 7
                     3 dB
-                8
+                8 (Max.)
                     0 dB
 
-        :type level:    int.
+        :type level: int.
         :rtype: int, str.
         :raises: ValueError
         """
