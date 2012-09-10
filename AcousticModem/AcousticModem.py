@@ -41,6 +41,8 @@ class ATM900(object):
         else:
             raise ValueError('Invalid baud rate selected. Valid rates are \
             1200, 2400, 4800, 9600, 19200, 57600, or 115200')
+        
+        # Try to locate a connected modem if no baud rate is specified.
         if baud_rate is None:
             for rate in self.available_baud_rates:
                 self.modem = ser(self.serial_port, rate, timeout=1.0)
@@ -51,10 +53,10 @@ class ATM900(object):
             if not self.modem.isOpen():
                 raise IOError('Failed to detect acoustic modem')
         else:
-            self.modem = ser(self.serial_port, self.baud_rate, timeout=1.0)
-        self.modem.write('ATO\r\n')
-        self._config_mode = False
-        self.P1EchoChar = False
+            # Force modem to known state
+            self.modem.write('ATO\r\n')
+            self._config_mode = False
+            self.P1EchoChar = False
 
 
     def _configMode(self):
@@ -245,8 +247,11 @@ class ATM900(object):
 
         Resets the local modem idle time timer and verifies communications
         between the host processor and the modem.
+        :raises: IOError
         """
-        self._atCommand('AT')
+        if 'OK' not in self._atCommand('AT')[0]:
+            raise IOError('Failed to execute attention command')
+        
 
 
     def reboot(self):
@@ -256,6 +261,7 @@ class ATM900(object):
 
         """
         self._atCommand('ATES')
+        self._config_mode = True
 
 
     def remoteReset(self, address):
@@ -271,7 +277,7 @@ class ATM900(object):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
-        self._atCommand('AT$ES'+ str(address))
+        self._atCommand('AT$ES%d' % address)
 
 
     def updateFirmware(self):
@@ -296,7 +302,7 @@ class ATM900(object):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
-        self._atCommand('ATD' + str(address))
+        self._atCommand('ATD%d' % address)
 
 
     def factoryReset(self):
@@ -335,13 +341,20 @@ class ATM900(object):
         if port not in range(1, 3):
             raise ValueError('Invalid port. Valid ports are 1 or 2.')
             return
-        self._atCommand('AT$K%s,%s' % str(address), str(port))
+        self._atCommand('AT$K%d,%d' % address, port)
 
     def linkTest(self, address):
         """ Acoustic link test
 
         Tests the acoustic link with the modem at address 'address.'
-
+        
+        .. note::
+            The remote address test sets the RemoteAddr configuration parameter
+            of the remote modem to the address of the local modem. If the 
+            remote modem will later be used in Online mode, then its RemoteAddr
+            configuration parameter may need to be set back to the setting it 
+            was before the linkTest command was sent to it. 
+        
         :param address: The address of the remote modem.
         :type address: int.
         :raises: ValueError.
@@ -350,7 +363,7 @@ class ATM900(object):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
-        self._atCommand('ATX' + str(address))
+        self._atCommand('ATX%d' % address)
 
 
     def rateTest(self, address):
@@ -358,6 +371,7 @@ class ATM900(object):
 
         Tests the acoustic link with the modem at address 'address' at multiple
         bit rates.
+            
 
         :param address: The address of the remote modem.
         :type address: int.
@@ -367,7 +381,8 @@ class ATM900(object):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
-        self._atCommand('ATY' + str(address))
+        self._atCommand('ATY%d' % address)
+      
 
 
     def remotePower(self, address, level):
@@ -375,10 +390,10 @@ class ATM900(object):
 
         Sets the transmit power level of the remote modem at address 'address'
         to 'level'
-        
+
         :param address: The address of the remote modem.
         :type address: int.
-        :param level: 
+        :param level:
             Options are:
                 1 (Min.)
                     -21 dB
@@ -406,18 +421,18 @@ class ATM900(object):
         if level not in range(1, 9):
             raise ValueError('Invalid level. Valid power levels are 0 to 8.')
             return
-        self._atCommand('AT$P%s,%s' % str(address), str(level))
+        self._atCommand('AT$P%d,%d' % address, level)
 
 
     def remoteRate(self, address, rate):
         """ Remote bit rate
 
-        Sets the transmitting acoustic bit rate of the remote modem at address 
+        Sets the transmitting acoustic bit rate of the remote modem at address
         'address' to 'rate.'
 
         :param address: The address of the remote modem.
         :type address: int.
-        :param rate: 
+        :param rate:
             Options are:
                 2  (140):
                     140 bits/sec MFSK repeated twice with rate 1/2
@@ -458,9 +473,87 @@ class ATM900(object):
         if rate not in range(2, 14):
             raise ValueError('Invalid rate. Valid rate settings are 2 to 13.')
             return
-        self._atCommand('AT$A%s,%s' % str(address), str(rate))
+        self._atCommand('AT$A%d,%d' % address, rate)
 
-
+    
+    def readRegister(self, register):
+        """ Read register
+        
+        Displays the setting of th elocal modem's configuration parameter 'register'
+        
+        :param register: The register to read.
+        :type register: int.
+        :rtype: int.
+        :raises: ValueError.
+        """
+        if register not in range(0,21):
+            raise ValueError('Invalid register. Valid registers are 0-20')
+            return
+        return self._atCommand('ATS%d?' % register)
+       
+       
+    def remoteRegister(self, address):
+        """ Read remote registers.
+        
+        Displays the configuration parameter settings of the remote modem at addres 'address'.
+        
+        :param address: The address of the remote modem.
+        :type address: int.
+        :rtype: list.
+        :raises: ValueError.
+        """
+        if address not in [range(0, 250), 255]:
+            raise ValueError('Invalid address. Valid addresses are 0-249 or \
+            the broadcast address 255.')
+            return
+        return self._atCommand('AT$S%d' % address)
+        
+    def setRegister(self, register, value):
+        """ Set register
+        
+        Sets the local modem's configuration parameter number 'register' to the value specified in 'value'
+        
+        :param register: The register to set.
+        :type register: int.
+        :param value: The value to set
+        :type value: int.
+        :raises: ValueError.
+        """
+        if register not in range(0,21):
+            raise ValueError('Invalid register. Valid registers are 0-20')
+            return
+        if value not in range(-50000, 50000):
+            raise ValueError('Invalid value.')
+            return
+        self._atCommand('ATS%d=%d' % register, value)
+        
+    
+    def lowPower(self):
+        """ lowpower state
+        
+        The lowpower state command forces the idle timer of the local modem to 
+        expire, which causes the modem to go into the lowpower state.
+        
+        
+        :rtype: bool.
+        """
+        pass
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+    
     def writeSettings(self):
         """ Write
 
@@ -487,6 +580,7 @@ class ATM900(object):
         :rtype: list.
         """
         return self._atCommand('ATI')[0:-1]
+         
 
 
     @property
@@ -520,6 +614,12 @@ class ATM900(object):
     def P1Baud(self):
         """ Serial port 1 baud rate
 
+        .. note::
+            Because changes to the baud rate take place immediately, when this 
+            parameter is changed, the connection to the modem is closed and 
+            re-opened at the new baud rate automatically. There is no need to 
+            manually re-connect after changing the baud rate settings.
+            
         :param rate:
             Available baud rates are:
                 * 1200
@@ -553,6 +653,10 @@ class ATM900(object):
     @property
     def P1EchoChar(self):
         """Serial port 1 echo enable/disable
+        
+        The setting of the P1EchoChar configuration parameter determines 
+        whether characters entered from the keyboard for serial port 1 are 
+        echoed back to the host computer.
 
         .. note::
             This should be set to *False* if you are using this API to read
@@ -573,7 +677,14 @@ class ATM900(object):
     @property
     def P1FlowCtrl(self):
         """ Serial port 1 flow control.
-
+        
+        The setting of the P1FlowCtrl configuration parameter determines 
+        whether hardware RTS/CTS handshaking or software XON/XOFF handshaking
+        is used for flow control, or if no handshaking is used. The setting 
+        also determines whether the RS-232 driver for serial port 1 is turned 
+        off or left on when a modem is in the lowpower state. Turning off the
+        driver conserves battery power.
+        
         .. note::
             The ATM-900 Series Acoustic Telemetry Modems User's manual (Rev. A)
             lists this command as P1FlowCtrl, when the actual command is
@@ -619,7 +730,16 @@ class ATM900(object):
     @property
     def P1Protocol(self):
         """ Serial port 1 protocol.
-
+        
+        The setting of the P1Protocol configuration parameter determines 
+        whether serial port 1 is configured as an RS-232 or RS-422 serial 
+        interface.
+        
+        .. warning::
+            After changing from RS-232 to RS-422 an RS-422 connection is
+            required to switch back to RS-232.  The opposite is true after 
+            changing from RS-422 to RS-232.
+            
         :param protocol:
             Options are:
 
@@ -644,6 +764,10 @@ class ATM900(object):
     @property
     def P1StripB7(self):
         """ Serial port 1 strip bit 7 enable
+        
+        The setting of the P1StripB7 configuration parameter determines whether
+        serial port 1 will use 8 bits or strip the last bit and allow only 7 
+        bits. Setting P1StripB7 to true allows 7E1 and 7O1 formats.
 
         :type enable: bool.
         :rtype: bool
@@ -660,6 +784,12 @@ class ATM900(object):
     def P2Baud(self):
         """ Serial port 2 baud rate
 
+        .. note::     
+            Because changes to the baud rate take place immediately, when this 
+            parameter is changed, the connection to the modem is closed and 
+            re-opened at the new baud rate automatically. There is no need to 
+            manually re-connect after changing the baud rate settings.
+            
         :param rate:
             Available baud rates are:
                 * 1200
@@ -692,6 +822,10 @@ class ATM900(object):
     @property
     def P2EchoChar(self):
         """ Serial port 2 echo enable/disable
+        
+        The setting of the P2EchoChar configuration parameter determines 
+        whether characters entered from the keyboard for serial port 2 are 
+        echoed back to the host computer.
 
         .. note::
             This should be set to *False* if you are using this API to read
@@ -712,6 +846,13 @@ class ATM900(object):
     @property
     def P2FlowCtrl(self):
         """ Serial port 2 flow control.
+        
+        The setting of the P2FlowCtrl configuration parameter determines 
+        whether hardware RTS/CTS handshaking or software XON/XOFF handshaking
+        is used for flow control, or if no handshaking is used. The setting 
+        also determines whether the RS-232 driver for serial port 2 is turned 
+        off or left on when a modem is in the lowpower state. Turning off the
+        driver conserves battery power.
 
         .. note::
             The ATM-900 Series Acoustic Telemetry Modems User's manual (Rev. A)
@@ -761,6 +902,10 @@ class ATM900(object):
     @property
     def P2StripB7(self):
         """ Serial port 2 strip bit 7 enable
+        
+        The setting of the P2StripB7 configuration parameter determines whether
+        serial port 2 will use 8 bits or strip the last bit and allow only 7 
+        bits. Setting P2StripB7 to true allows 7E1 and 7O1 formats.
 
         :type enable: bool.
         :rtype: bool.
@@ -776,6 +921,10 @@ class ATM900(object):
     @property
     def SyncPPS(self):
         """ PPS clock source.
+        
+        The setting of the SyncPPS configuration parameter determines whether 
+        the internal real-time clock provides the one pulse per second (1PPS) 
+        signal to keep time or an external 1PPS, such as a GPS, is used.
 
         :param setting:
             Options are:
@@ -812,6 +961,12 @@ class ATM900(object):
     @property
     def IdleTimer(self):
         """ Low Power Idle Timer.
+        
+        The setting of the IdleTimer configuration parameter determines the 
+        time after which a modem will go into the lowpower state if htere is no 
+        input either from the serial interface or from a remote modem over the 
+        acoustic link. For a Compact Modem the modem goes into its hibernate 
+        state.
 
         :param time: timer as HH:MM:SS
         :type time: str.
@@ -834,6 +989,10 @@ class ATM900(object):
     @property
     def Verbose(self):
         """ Display verbosity.
+        
+        The setting of the Verbose configuration parameter determines hwether 
+        only data, or data and other information, when received by the local 
+        modem, are displayed.
 
         :param setting:
             Options are:
@@ -867,6 +1026,14 @@ class ATM900(object):
     @property
     def Prompt(self):
         """ Prompt setting.
+        
+        The Prompt configuration parameter determines the characters displayed 
+        for the command prompt which can include any combination of the ">" 
+        character, the privilege level and the history number as in the 
+        following example::
+            
+            user:5>
+            
 
         :param setting:
             Options are:
@@ -902,7 +1069,20 @@ class ATM900(object):
 
     @property
     def CMWakeHib(self):
-        """ Compact modem wakeup period.
+        """ Compact modem wakeup period
+        
+        The setting of the CMWakeHib configuration parameter, which applies 
+        only to compact modems, determines the wakeup period of the modem. A 
+        compact modem is normally in a hibernate state where everything is 
+        essentially shut down. even the receiver. However, while in this 
+        hibernate state the modem will activate its receiver and listen for a 
+        wakeup signal from a transmitting modem for 150ms every wakeup period. 
+        The length of the wakeup period determines how often the Compact Modem 
+        will listen for a wakeup signal. A shorter wakeup period means that the 
+        modem will listen more frequently and therefore can be awakened more 
+        quickly. A longer wakeup period means that the modem will listen less 
+        frequently and therefore will be awakened more slowly. A shorter wakeup 
+        period uses more power than a longer wakeup period.
 
         :param period:
             Options are::
@@ -936,7 +1116,37 @@ class ATM900(object):
 
     @property
     def CMFastWake(self):
-        """Fast compact modem wakeup scheme enable/disable.
+        """Fast compact modem wakeup scheme enable/disable
+        
+        The setting of the CMFastWake ocnfiguration parameter determines 
+        whether the slow wakeup scheme is used to wake up a compact modem or 
+        the fast wakeup scheme. The slow wakeup scheme is implemented in all 
+        UDB-9400 Universal Deck Boxes , in standartd modems of all firmware 
+        versions and in Compact Modems with firmware versions prior to 1.2.7 
+        only. The fast wakeup scheme is implemented in UDB-9400 Universal Deck 
+        Boxes with firmware versions 1.9.9 and higher, in standard modems with 
+        firmware versions 6.9.4 and higher, and in Compact Modems with firmware 
+        versions 1.2.7 and higher. This provides backwards compatibility with 
+        those compoact modems that use the slow wakeup scheme. The following 
+        table summarizes which firmware versions provide which wakeup scheme 
+        for the deck box and modems:
+            
+            +--------------------------------------+------+------+
+            | Product and Firmware Version         | Slow | Fast |
+            +======================================+======+======+
+            | UDB-9400 Deck Box (prior to 1.9.9)   |  x   |      |
+            +--------------------------------------+------+------+
+            | UDB-9400 Deck Box (1.9.9 and higher) |  x   |  x   |
+            +--------------------------------------+------+------+
+            | Standard modem (prior to 6.9.4)      |  x   |      |
+            +--------------------------------------+------+------+
+            | Standard modem (6.9.4 and higher)    |  x   |  x   |
+            +--------------------------------------+------+------+
+            | Compact modem (prior to 1.2.7)       |  x   |      |
+            +--------------------------------------+------+------+
+            | Compact modem (1.2.7 and higher)     |      |  x   |
+            +--------------------------------------+------+------+
+            
 
         :type enable: bool.
         :rtype: bool.
@@ -953,6 +1163,11 @@ class ATM900(object):
     @property
     def CPBoard(self):
         """ Coprocessor board presence
+        
+        The setting of the CPBoard configuration parameter determines whether 
+        the Coprocessor board is enabled, and if enabled, whether it is enabled 
+        only when receiving data or at all times, or if it is enabled for 
+        firmware updating only.
 
         :param setting:
             Options are:
@@ -989,6 +1204,10 @@ class ATM900(object):
     @property
     def AcData(self):
         """ Output or store received data
+        
+        The setting of the AcData configuration Parameter determines whether 
+        data received over the acoustic link are output over the serial 
+        interface, stored in the data logger, or both.
 
         :param setting:
             Options are:
@@ -1019,6 +1238,10 @@ class ATM900(object):
     @property
     def AcStats(self):
         """ Store received data and time stamps.
+        
+        The setting of the AcStats configuration parameter determines whether
+        statistics and time stamps for data received over the acoustic link are
+        stored in the data logger memory.
 
         :param setting:
             Options are:
@@ -1052,6 +1275,19 @@ class ATM900(object):
     @property
     def RingBuf(self):
         """ Ring buffer enable/disable.
+        
+        The setting of the RingBuf configuration parameter determines whether
+        the data logger will record data in flat mode where up to 6MB of data 
+        are recorded and then recording stops, or in ring buffer mode where 
+        data are recorded in a 6MB 'ring' buffer. When recording data in the 
+        ring buffer and the buffer fills, the oldest 384kB of data are erased 
+        making room for new data which can continue to be recorded until the 
+        6MB ring buffer is again filled. This cycle repeats continuously as 
+        long as new data are received, ensuring that the latest 6MB of data are 
+        always available. The data cna be received acoustic data if the AcData 
+        configuration parameter is set to 1 or 2, or the data cna be data 
+        received on the serial interface if the OpMode configuration parameter 
+        is set to 2.
 
         :type enable:   bool.
         :rtype: bool.
@@ -1066,6 +1302,9 @@ class ATM900(object):
     @property
     def SubBlks(self):
         """ The number of sub-blocks to transmit
+        
+        The SubBlks configuration parameter determines the number of sub-blocks 
+        transmitted when using the output Datalogger Sub-block command.
 
         :type count: int.
         :rtype: int.
@@ -1085,6 +1324,10 @@ class ATM900(object):
     @property
     def LogMode(self):
         """ Data storage mode.
+        
+        The setting of the LogMode configuration parameter determines how 
+        records are indexed in the data logger memory. The setting applies to 
+        bot serial port 1 and serial port 2 when InputMode==2 (Dual.)
 
         :param mode:
             Options are:
@@ -1123,6 +1366,13 @@ class ATM900(object):
     @property
     def Sentinel(self):
         """ Character for data partitioning.
+        
+        The setting of the Sentinel configuration parameter, which applies only
+        when LogMode==1 (Sentinel,) is the character for the ASCII code that is 
+        to be used as a sentinel for partitioning data received on the serial 
+        interface into discrete records. Monitoring for hte ASCII code is 
+        performed separatedly for serial port 1 and serial port 2 when 
+        InputMode==2 (Dual.)
 
         :type value: int.
         :rtype: int.
@@ -1141,6 +1391,13 @@ class ATM900(object):
     @property
     def ChrCount(self):
         """ Character count for data partitioning.
+        
+        The setting of the ChrCount configuration parameter, which applies only
+        when the LogMode configuration parameter is set to 2 (ChrCount,) is the
+        number of characters to receive on the serial i nterface before a 
+        discrete record is stored int he data logger memory. Monitoring for the
+        character count is performed serarately for serial port 1 and serial 
+        port 2 when InputMode==2 (Dual.)
 
         :type count: int.
         :rtype: int.
@@ -1160,6 +1417,10 @@ class ATM900(object):
     @property
     def LogStore(self):
         """ Data logger storage medium.
+        
+        The setting of the LogStore configuratio parameter determins which 
+        storage medium on the local modem the data logger information will be 
+        stored in.
 
         :param medium:
             Options are:
@@ -1186,6 +1447,13 @@ class ATM900(object):
     @property
     def DataRetry(self):
         """ Data retry enable/disable.
+        
+        The setting of the DataRetry configuration parameter determins whether
+        an acoustic data packet that is received with errors is retransmitted. 
+        When enabled, an acknowledgement is required after transmitting each 
+        data packet, and the data are retransmitted up to two times if errors 
+        are detected or if now acknowledgement is received. When disabled, data 
+        are transmitted only once.
 
         :type enable: bool.
         :rtype: bool.
@@ -1201,6 +1469,16 @@ class ATM900(object):
     @property
     def AcRspTmOut(self):
         """ Acoustic response time out in seconds.
+        
+        The setting of the AcRspTmOut configuration parameter determines the
+        acoustic response timeout, which is the time during which a local modem 
+        will wait for an acknowledgement ton an acoustic command sent to a 
+        remote modem. If no acknowledgement is received, the local modem will 
+        output the results message "Response Not Received." When setting the 
+        AcRspTmOut configuration parameter, the toal two-way sound travel time 
+        to the remote modem must be taken into account, along with 
+        approximately 3.5 seconds fro the remote modem to transmit an 
+        acknowledgement to the command.
 
         :type value: float.
         :rtype: int.
