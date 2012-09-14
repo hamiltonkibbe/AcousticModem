@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-    AcousticModem.ATM900
+    acousticmodem.ATM900
     ~~~~~~~~~~~~~~~~~~~~
 
     An ATM-900/UDB-9400 Acoustic Modem interface
@@ -10,6 +10,7 @@
     :license: All Rights Reserved.
 
 """
+import re
 from time import sleep
 
 # debian: apt-get install pyserial
@@ -50,8 +51,9 @@ class ATM900(object):
                     break
                 else:
                     self.modem.close()
-            if not self.modem.isOpen():
-                raise IOError('Failed to detect acoustic modem')
+        self.modem = ser(self.serial_port, self.baud_rate, timeout=1.0)
+        if not self.modem.isOpen():
+            raise IOError('Failed to detect acoustic modem')
         else:
             # Force modem to known state
             self.modem.write('ATO\r\n')
@@ -103,7 +105,7 @@ class ATM900(object):
             raise IOError('Entering online mode failed.')
 
 
-    def _atCommand(self, command, value=None):
+    def _atCommand(self, command, value=None, regex=None):
         """ Executes an AT Command.
 
         Puts the modem into config mode if necessary and sends an AT command.
@@ -134,12 +136,26 @@ class ATM900(object):
         if '\r\n' not in command:
             command += '\r\n'
         self.modem.write(command)
-        sleep(0.5)  # Wait for response
+        
+        # search for regex in response if given
+        if regex is not None:
+            expr=re.compile(regex)
+            response = ''
+            count = 0
+            while expr.search(response) is None:
+                count += 1
+                response += self.modem.read(self.modem.inWaiting())
+                if count==10000 and response=='':
+                    raise IOError('No Response Received')
+                    break
+            
+        # or just wait for response
+        else:
+            sleep(0.5)  # Wait for response
+            response = self.modem.read(self.modem.inWaiting())
 
-        # Return the modem's'
-        return [x.rstrip(' ') for x in self.modem.read(self.modem.inWaiting())\
-        .strip('\r\n ').split('\r\n')]
-
+        # Return the modem's' response
+        return [x.rstrip(' ') for x in response.strip('\r\n').split('\r\n')]
 
     def _isConnected(self):
         """ Check for connected modem
@@ -273,7 +289,7 @@ class ATM900(object):
         :type address: int.
         :raises: ValueError.
         """
-        if address not in [range(0, 250), 255]:
+        if address not in range(0, 250).append(255):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
@@ -298,7 +314,7 @@ class ATM900(object):
         :type address: int.
         :raises: ValueError
         """
-        if address not in [range(0, 250), 255]:
+        if address not in range(0, 250).append(255):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
@@ -334,7 +350,7 @@ class ATM900(object):
         :type port: int.
         :raises: ValueError.
         """
-        if address not in [range(0, 250), 255]:
+        if address not in range(0, 250).append(255):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
@@ -359,11 +375,17 @@ class ATM900(object):
         :type address: int.
         :raises: ValueError.
         """
-        if address not in [range(0, 250), 255]:
+        if address not in [0, range(0, 250), 255]:
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
-        self._atCommand('ATX%d' % address)
+        response =  self._atCommand('ATX%d' % address, regex = 'CCERR:[0-9]{3}\r\n')
+        response =  response[1].split(' ')
+        keys = [x.split(':')[0] for x in response]
+        values = [x.split(:)[1] for x in response]
+        return dict(zip(keys,values))
+        
+        
 
 
     def rateTest(self, address):
@@ -377,12 +399,13 @@ class ATM900(object):
         :type address: int.
         :raises: ValueError.
         """
-        if address not in [range(0, 250), 255]:
+        if address not in (range(0, 250) or [255]):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
-        self._atCommand('ATY%d' % address)
-      
+        # This regex finds the last line based on the mode (3 is the last test) and makes sure we get all of it
+        response = self._atCommand('ATY%d' % address,regex='MOD:03 ERR:[0-9]{3} SNR:[0-9]{2}.[0-9] AGC:[0-9]{2} SPD:[\+|-][0-9]{2}.[0-9] CCERR:[0-9]{3}\r\n')
+        return response[1::3]
 
 
     def remotePower(self, address, level):
@@ -414,7 +437,7 @@ class ATM900(object):
         :type level: int.
         :raises: ValueError.
         """
-        if address not in [range(0, 250), 255]:
+        if address not in range(0, 250).append(255):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
@@ -466,7 +489,7 @@ class ATM900(object):
         :type rate: int.
         :raises: ValueError.
         """
-        if address not in [range(0, 250), 255]:
+        if address not in range(0, 250).append(255):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
@@ -502,7 +525,7 @@ class ATM900(object):
         :rtype: list.
         :raises: ValueError.
         """
-        if address not in [range(0, 250), 255]:
+        if address not in range(0, 250).append(255):
             raise ValueError('Invalid address. Valid addresses are 0-249 or \
             the broadcast address 255.')
             return
@@ -1111,7 +1134,7 @@ class ATM900(object):
     def CMWakeHib(self, period):
         self._setCommand('@CMWakeHib',
                          period,
-                         [range(-1,10),11],
+                         range(-1,10).append(11),
                          'Invalid parameter, valid values are 0-9 or 11')
 
     @property
@@ -1608,7 +1631,7 @@ class ATM900(object):
     def RemoteAddr(self, addr):
         self._setCommand('@RemoteAddr',
                          addr,
-                         [range(0, 250), 255],
+                         range(0, 250).append(255),
                          'Invalid parameter, valid addresses are 0-249 or 255')
 
 
