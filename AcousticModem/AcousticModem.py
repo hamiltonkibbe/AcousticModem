@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-    acousticmodem.ATM900
+    AcousticModem.ATM900
     ~~~~~~~~~~~~~~~~~~~~
 
     An ATM-900/UDB-9400 Acoustic Modem interface
