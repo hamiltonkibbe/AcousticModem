@@ -7,7 +7,7 @@ It's this easy:
 
     import AcousticModem
     
-    modem = ATM900('com1')
+    modem = ATM900('COM1', 9600)
     modem.write('Hello, World!')
 
     # set remote modem properties
